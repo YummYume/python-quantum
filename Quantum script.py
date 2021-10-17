@@ -98,7 +98,7 @@ class ProcessList:
                                 Start = timeBeforeEntry,
                                 Finish = time,
                                 Resource = "Process",
-                                Description = "Lasted %s%s, from %s%s to time %s%s. %s%s remaining to complete." % (self.unit, processTime, self.unit, timeBeforeEntry, self.unit, time, self.unit, process.duration)
+                                Description = "Lasted %s%s, from %s%s to %s%s. %s%s remaining to complete." % (self.unit, processTime, self.unit, timeBeforeEntry, self.unit, time, self.unit, process.duration)
                             ))
                         # Process is running
                         else:
@@ -118,7 +118,7 @@ class ProcessList:
                                 Start = timeBeforeEntry + self.contextChangeDuration,
                                 Finish = time,
                                 Resource = "Process",
-                                Description = "Lasted %s%s, from %s%s to time %s%s. %s%s remaining to complete." % (self.unit, processTime, self.unit, timeBeforeEntry + self.contextChangeDuration, self.unit, time, self.unit, process.duration)
+                                Description = "Lasted %s%s, from %s%s to %s%s. %s%s remaining to complete." % (self.unit, processTime, self.unit, timeBeforeEntry + self.contextChangeDuration, self.unit, time, self.unit, process.duration)
                             ))
 
         # Create Gantt chart now for later
@@ -415,6 +415,7 @@ def generateQuantums(quantum = QUANTUM):
         "mainIndex": mainIndex
     }
 
+# Updates the graphs depending on the quantum selected
 @app.callback(
     Output('gantt-graph', 'figure'),
     Output('pie-chart', 'figure'),
@@ -536,7 +537,7 @@ if __name__ == "__main__":
                     }
                 ),
                 html.Div(
-                    children = 'Results of the processes running.',
+                    children = 'Results of the processes running using the round-robin scheduling.',
                     style = {
                         'textAlign': 'center',
                         'color': '#B0C4DE'
