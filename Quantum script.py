@@ -11,7 +11,8 @@ from copy import deepcopy
 import dash
 from dash import html
 from dash import dcc
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
+from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 
 # App constants
@@ -427,34 +428,78 @@ def updateQuantumGraphs(index):
 
     return graphData["gantt"], graphData["pieChart"], graphData["cardContent"]
 
+@app.callback(
+    Output('alert-success', 'is_open'),
+    Output('alert-danger', 'is_open'),
+    Output('quantum-id', 'data'),
+    Output('quantum', 'options'),
+    Output('quantums-text', 'children'),
+    Input('add-quantum-button', 'n_clicks'),
+    State('quantum-input', 'value'),
+    State('quantum-id', 'data')
+)
+def addQuantum(n, newQuantum, quantumId):
+    if n is not None:
+        if isinstance(newQuantum, str):
+            try:
+                newQuantum = int(newQuantum)
+            except:
+                print("Value %s cannot be converted to int." % newQuantum)
+
+        if isinstance(newQuantum, int) and newQuantum > 0 and newQuantum < 101 and not any(processList.quantum == newQuantum for processList in processLists):
+            newProcessList = ProcessList(quantumId, deepcopy(processes), newQuantum, contextChangeDuration, unit)
+            newProcessList.runProcesses()
+            processLists.append(newProcessList)
+            quantumId += 1
+            processLists.sort(key = lambda x: x.quantum, reverse = False)
+
+            dropdownOptions = []
+            for processList in processLists:
+                dropdownOptions.append({
+                    'label': "%s%s" % (unit, processList.quantum),
+                    'value': processList.id
+                })
+
+            quantumsText = "Quantums : %s" % (", ".join(unit + str(processList.quantum) for processList in processLists))
+
+            return True, False, quantumId, dropdownOptions, quantumsText
+
+        return False, True, dash.no_update, dash.no_update, dash.no_update
+
+    raise PreventUpdate
+
 # Main
 if __name__ == "__main__":
     processes = PROCESSES
     quantum = QUANTUM
     contextChangeDuration = CONTEXT_CHANGE_DURATION
     unit = UNIT
-    fileName = input("Path to Json file (processVariableStart.json) : ")
+    fileName = input("\nPath to Json file (processVariableStart.json) : ")
     if fileName == "":
         fileName = "processVariableStart.json"
         
         # Read json file and get values (otherwise get constants)
         try:
-            print("Reading %s file..." % fileName)
+            print("\nReading %s file..." % fileName)
 
             with open(fileName, encoding='utf-8-sig') as jsonFile:
                 data = json.load(jsonFile)
 
-                if "quantumDuration" in data:
+                if "quantumDuration" in data and isinstance(data["quantumDuration"], int):
                     quantum = int(data["quantumDuration"])
+                    print("quantumDuration loaded.")
 
-                if "contextSwapDuration" in data:
+                if "contextSwapDuration" in data and isinstance(data["contextSwapDuration"], int):
                     contextChangeDuration = int(data["contextSwapDuration"])
+                    print("contextSwapDuration loaded.")
 
-                if "unit" in data:
+                if "unit" in data and isinstance(data["unit"], str):
                     unit = data["unit"]
+                    print("unit loaded.")
 
                 if "processList" in data and isinstance(data["processList"], list):
                     processes = toProcesses(data["processList"])
+                    print("processList loaded.")
 
         except Exception:
             print("An error occured while reading file %s." % fileName)
@@ -467,6 +512,7 @@ if __name__ == "__main__":
         quantums = [quantum]
         processLists = []
         mainIndex = 0
+        quantumId = 0
         timeLabel = "Time (%s)" % unit
         lineChartsData = {
             "x": {
@@ -482,17 +528,16 @@ if __name__ == "__main__":
                 "averageJourneyTime": []
             }
         }
-        multipleQuantums = input("Generate multiple quantums? (y/n) : ")
+        multipleQuantums = input("\nGenerate multiple quantums? (y/n) : ")
 
         if multipleQuantums == "" or multipleQuantums == "y" or multipleQuantums == "yes":
             quantumData = generateQuantums(quantum)
             quantums = quantumData["quantums"]
             mainIndex = quantumData["mainIndex"]
 
-        id = 0
         for generateQuantum in quantums:
-            processLists.append(ProcessList(id, deepcopy(processes), generateQuantum, contextChangeDuration, unit))
-            id += 1
+            processLists.append(ProcessList(quantumId, deepcopy(processes), generateQuantum, contextChangeDuration, unit))
+            quantumId += 1
 
         for processList in processLists:
             processList.runProcesses()
@@ -522,6 +567,7 @@ if __name__ == "__main__":
         if showGraph == "" or showGraph == "y" or showGraph == "yes":
             graphData = processLists[mainIndex].getGraphs()
             dropdownOptions = []
+            
             for processList in processLists:
                 dropdownOptions.append({
                     'label': "%s%s" % (unit, processList.quantum),
@@ -529,6 +575,10 @@ if __name__ == "__main__":
                 })
 
             htmlView = [
+                dcc.Store(
+                    id = 'quantum-id',
+                    data = quantumId
+                ),
                 html.H1(
                     children = 'Graphs of Processes',
                     style = {
@@ -543,26 +593,65 @@ if __name__ == "__main__":
                         'color': '#B0C4DE'
                     }
                 ),
+                dbc.Alert(
+                    "The quantum has been added.",
+                    id = "alert-success",
+                    color = "success",
+                    is_open = False,
+                    style = {
+                        'margin': '20px'
+                    }
+                ),
+                dbc.Alert(
+                    "Please enter a valid quantum (1-100) that does not already exist.",
+                    id = "alert-danger",
+                    color = "danger",
+                    is_open = False,
+                    style = {
+                        'margin': '20px'
+                    }
+                ),
                 dbc.Row(
                     [
-                        dbc.Col(
-                            html.P(
-                                "Quantum :",
-                                style = {
-                                    'padding-left': '20px'
-                                }
+                        html.Div([
+                            dbc.Col(
+                                html.P(
+                                    "Quantum :",
+                                    style = {
+                                        'paddingLeft': '20px'
+                                    }
+                                ),
                             ),
-                        width = 12),
-                        dbc.Col(
-                            dcc.Dropdown(
-                                id = 'quantum',
-                                options = dropdownOptions,
-                                value = processLists[mainIndex].id,
-                                style = {
-                                    'padding-left': '20px'
-                                }
+                            dbc.Col(
+                                dcc.Dropdown(
+                                    id = 'quantum',
+                                    options = dropdownOptions,
+                                    value = processLists[mainIndex].id,
+                                    style = {
+                                        'paddingLeft': '20px'
+                                    }
+                                ),
+                            )
+                        ]),
+                        html.Div([
+                            dbc.Col(
+                                html.P(
+                                    "Add a quantum (1-100) :"
+                                ),
                             ),
-                        width = 11, sm = 8, md = 5, lg = 3, xl = 2)
+                            dcc.Input(
+                                id = 'quantum-input',
+                                type = 'number',
+                                value = 6
+                            ),
+                            html.Button(
+                                id = 'add-quantum-button',
+                                children = 'Add',
+                                style = {
+                                    'marginLeft': '5px'
+                                }
+                            )
+                        ])
                     ],
                     justify = "left"
                 ),
@@ -599,9 +688,22 @@ if __name__ == "__main__":
                     ],
                     justify = "around"
                 ),
+                html.H2(
+                    'Global Data with LineCharts',
+                    style = {
+                        'textAlign': 'center',
+                        'color': '#B0C4DE'
+                    }
+                ),
+                html.Div(
+                    id = 'quantums-text',
+                    children = "Quantums : %s" % (", ".join(unit + str(processList.quantum) for processList in processLists)),
+                    style = {
+                        'textAlign': 'center',
+                        'color': '#B0C4DE'
+                    }
+                )
             ]
-
-            globalDataTitleSet = False
 
             if len(lineChartsData["x"]["averageWaitingTimeBeforeStart"]) > 1 and len(lineChartsData["y"]["averageWaitingTimeBeforeStart"]) > 1:
                 df = pd.DataFrame(dict(
@@ -610,27 +712,6 @@ if __name__ == "__main__":
                 ))
                 averageWaitingTimeBeforeStartLineChart = px.line(df, x = "x", y = "y", title = "Average waiting time before start", markers = True)
                 averageWaitingTimeBeforeStartLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
-
-                if globalDataTitleSet == False:
-                    htmlView.append(
-                        html.H2(
-                            'Global Data with LineCharts',
-                            style = {
-                                'textAlign': 'center',
-                                'color': '#B0C4DE'
-                            }
-                        ),
-                    )
-                    htmlView.append(
-                        html.Div(
-                            children = "Quantums : %s" % (", ".join(unit + str(processList.quantum) for processList in processLists)),
-                            style = {
-                                'textAlign': 'center',
-                                'color': '#B0C4DE'
-                            }
-                        )
-                    )
-                    globalDataTitleSet = True
 
                 htmlView.append(
                     dcc.Graph(
@@ -646,18 +727,6 @@ if __name__ == "__main__":
                 ))
                 averageWaitingTimeLineChart = px.line(df, x = "x", y = "y", title = "Average waiting time", markers = True)
                 averageWaitingTimeLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
-                 
-                if globalDataTitleSet == False:
-                    htmlView.append(
-                        html.H2(
-                            'Global Data with LineCharts',
-                            style = {
-                                'textAlign': 'center',
-                                'color': '#B0C4DE'
-                            }
-                        ),
-                    )
-                    globalDataTitleSet = True
 
                 htmlView.append(
                     dcc.Graph(
@@ -673,18 +742,6 @@ if __name__ == "__main__":
                 ))
                 averageLoadingTimeLineChart = px.line(df, x = "x", y = "y", title = "Average loading time", markers = True)
                 averageLoadingTimeLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
-                 
-                if globalDataTitleSet == False:
-                    htmlView.append(
-                        html.H2(
-                            'Global Data with LineCharts',
-                            style = {
-                                'textAlign': 'center',
-                                'color': '#B0C4DE'
-                            }
-                        ),
-                    )
-                    globalDataTitleSet = True
 
                 htmlView.append(
                     dcc.Graph(
@@ -700,18 +757,6 @@ if __name__ == "__main__":
                 ))
                 averageJourneyTimeLineChart = px.line(df, x = "x", y = "y", title = "Average journey time", markers = True)
                 averageJourneyTimeLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
-                 
-                if globalDataTitleSet == False:
-                    htmlView.append(
-                        html.H2(
-                            'Global Data with LineCharts',
-                            style = {
-                                'textAlign': 'center',
-                                'color': '#B0C4DE'
-                            }
-                        ),
-                    )
-                    globalDataTitleSet = True
 
                 htmlView.append(
                     dcc.Graph(
