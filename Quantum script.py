@@ -1,6 +1,7 @@
 import sys
 import json
 import webbrowser
+import time
 import plotly.figure_factory as ff
 import plotly.graph_objects as go
 import plotly.express as px
@@ -14,11 +15,13 @@ from dash import dcc
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
+from dash_bootstrap_templates import load_figure_template
 
 # App constants
 app = dash.Dash(
-    external_stylesheets = [dbc.themes.BOOTSTRAP]
+    external_stylesheets = [dbc.themes.SOLAR]
 )
+load_figure_template("solar")
 port = 8050
 
 # Constants
@@ -423,17 +426,33 @@ def generateQuantums(quantum = QUANTUM):
     Output('info-card', 'children'),
     Input('quantum', 'value')
 )
-def updateQuantumGraphs(index):
-    graphData = processLists[index].getGraphs()
+def updateQuantumGraphs(processListId):
+    if isinstance(processListId, int):
+        processListSelect = next((processList for processList in processLists if processList.id == processListId), None)
+        if processListSelect is not None:
+            graphData = processListSelect.getGraphs()
 
-    return graphData["gantt"], graphData["pieChart"], graphData["cardContent"]
+            return graphData["gantt"], graphData["pieChart"], graphData["cardContent"]
 
+        raise PreventUpdate
+
+    raise PreventUpdate
+
+# Adds a quantum and updates the global graphs
 @app.callback(
     Output('alert-success', 'is_open'),
     Output('alert-danger', 'is_open'),
     Output('quantum-id', 'data'),
     Output('quantum', 'options'),
     Output('quantums-text', 'children'),
+    Output('linechart-1-graph', 'figure'),
+    Output('linechart-1-graph', 'className'),
+    Output('linechart-2-graph', 'figure'),
+    Output('linechart-2-graph', 'className'),
+    Output('linechart-3-graph', 'figure'),
+    Output('linechart-3-graph', 'className'),
+    Output('linechart-4-graph', 'figure'),
+    Output('linechart-4-graph', 'className'),
     Input('add-quantum-button', 'n_clicks'),
     State('quantum-input', 'value'),
     State('quantum-id', 'data')
@@ -450,7 +469,6 @@ def addQuantum(n, newQuantum, quantumId):
             newProcessList = ProcessList(quantumId, deepcopy(processes), newQuantum, contextChangeDuration, unit)
             newProcessList.runProcesses()
             processLists.append(newProcessList)
-            quantumId += 1
             processLists.sort(key = lambda x: x.quantum, reverse = False)
 
             dropdownOptions = []
@@ -462,9 +480,53 @@ def addQuantum(n, newQuantum, quantumId):
 
             quantumsText = "Quantums : %s" % (", ".join(unit + str(processList.quantum) for processList in processLists))
 
-            return True, False, quantumId, dropdownOptions, quantumsText
+            lineChartsData["x"]["averageWaitingTimeBeforeStart"].append(newQuantum)
+            lineChartsData["x"]["averageWaitingTime"].append(newQuantum)
+            lineChartsData["x"]["averageLoadingTime"].append(newQuantum)
+            lineChartsData["x"]["averageJourneyTime"].append(newQuantum)
 
-        return False, True, dash.no_update, dash.no_update, dash.no_update
+            lineChartsData["y"]["averageWaitingTimeBeforeStart"].append(newProcessList.data["averageWaitingTimeBeforeStart"])
+            lineChartsData["y"]["averageWaitingTime"].append(newProcessList.data["averageWaitingTime"])
+            lineChartsData["y"]["averageLoadingTime"].append(newProcessList.data["averageLoadingTime"])
+            lineChartsData["y"]["averageJourneyTime"].append(newProcessList.data["averageJourneyTime"])
+
+            df = pd.DataFrame(dict(
+                x = lineChartsData["x"]["averageWaitingTimeBeforeStart"],
+                y = lineChartsData["y"]["averageWaitingTimeBeforeStart"]
+            ))
+            df = df.sort_values(by = "x")
+            averageWaitingTimeBeforeStartLineChart = px.line(df, x = "x", y = "y", title = "Average waiting time before start", markers = True)
+            averageWaitingTimeBeforeStartLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
+
+            df = pd.DataFrame(dict(
+                x = lineChartsData["x"]["averageWaitingTime"],
+                y = lineChartsData["y"]["averageWaitingTime"]
+            ))
+            df = df.sort_values(by = "x")
+            averageWaitingTimeLineChart = px.line(df, x = "x", y = "y", title = "Average waiting time", markers = True)
+            averageWaitingTimeLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
+
+            df = pd.DataFrame(dict(
+                x = lineChartsData["x"]["averageLoadingTime"],
+                y = lineChartsData["y"]["averageLoadingTime"]
+            ))
+            df = df.sort_values(by = "x")
+            averageLoadingTimeLineChart = px.line(df, x = "x", y = "y", title = "Average loading time", markers = True)
+            averageLoadingTimeLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
+
+            df = pd.DataFrame(dict(
+                x = lineChartsData["x"]["averageJourneyTime"],
+                y = lineChartsData["y"]["averageJourneyTime"]
+            ))
+            df = df.sort_values(by = "x")
+            averageJourneyTimeLineChart = px.line(df, x = "x", y = "y", title = "Average journey time", markers = True)
+            averageJourneyTimeLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
+
+            quantumId += 1
+
+            return True, False, quantumId, dropdownOptions, quantumsText, averageWaitingTimeBeforeStartLineChart, 'd-block', averageWaitingTimeLineChart, 'd-block', averageLoadingTimeLineChart, 'd-block', averageJourneyTimeLineChart, 'd-block'
+
+        return False, True, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     raise PreventUpdate
 
@@ -485,11 +547,11 @@ if __name__ == "__main__":
             with open(fileName, encoding='utf-8-sig') as jsonFile:
                 data = json.load(jsonFile)
 
-                if "quantumDuration" in data and isinstance(data["quantumDuration"], int):
+                if "quantumDuration" in data and isinstance(data["quantumDuration"], int) and data["quantumDuration"] > 0:
                     quantum = int(data["quantumDuration"])
                     print("quantumDuration loaded.")
 
-                if "contextSwapDuration" in data and isinstance(data["contextSwapDuration"], int):
+                if "contextSwapDuration" in data and isinstance(data["contextSwapDuration"], int) and data["contextSwapDuration"] > 0:
                     contextChangeDuration = int(data["contextSwapDuration"])
                     print("contextSwapDuration loaded.")
 
@@ -497,7 +559,7 @@ if __name__ == "__main__":
                     unit = data["unit"]
                     print("unit loaded.")
 
-                if "processList" in data and isinstance(data["processList"], list):
+                if "processList" in data and isinstance(data["processList"], list) and len(data["processList"]) > 0:
                     processes = toProcesses(data["processList"])
                     print("processList loaded.")
 
@@ -511,6 +573,7 @@ if __name__ == "__main__":
     try:
         quantums = [quantum]
         processLists = []
+        mainId = 0
         mainIndex = 0
         quantumId = 0
         timeLabel = "Time (%s)" % unit
@@ -537,6 +600,9 @@ if __name__ == "__main__":
 
         for generateQuantum in quantums:
             processLists.append(ProcessList(quantumId, deepcopy(processes), generateQuantum, contextChangeDuration, unit))
+            if quantumId == mainIndex:
+                mainId = quantumId
+
             quantumId += 1
 
         for processList in processLists:
@@ -565,7 +631,8 @@ if __name__ == "__main__":
         showGraph = input("Show graphs? (y/n) : ")
 
         if showGraph == "" or showGraph == "y" or showGraph == "yes":
-            graphData = processLists[mainIndex].getGraphs()
+            processListGraph = next((processList for processList in processLists if processList.id == mainId), None)
+            graphData = processListGraph.getGraphs()
             dropdownOptions = []
             
             for processList in processLists:
@@ -581,6 +648,7 @@ if __name__ == "__main__":
                 ),
                 html.H1(
                     children = 'Graphs of Processes',
+                    className = 'my-2',
                     style = {
                         'textAlign': 'center',
                         'color': '#B0C4DE'
@@ -588,6 +656,7 @@ if __name__ == "__main__":
                 ),
                 html.Div(
                     children = 'Results of the processes running using the round-robin scheduling.',
+                    className = 'my-2',
                     style = {
                         'textAlign': 'center',
                         'color': '#B0C4DE'
@@ -598,6 +667,8 @@ if __name__ == "__main__":
                     id = "alert-success",
                     color = "success",
                     is_open = False,
+                    duration = 4000,
+                    dismissable = True,
                     style = {
                         'margin': '20px'
                     }
@@ -607,6 +678,8 @@ if __name__ == "__main__":
                     id = "alert-danger",
                     color = "danger",
                     is_open = False,
+                    duration = 4000,
+                    dismissable = True,
                     style = {
                         'margin': '20px'
                     }
@@ -626,9 +699,10 @@ if __name__ == "__main__":
                                 dcc.Dropdown(
                                     id = 'quantum',
                                     options = dropdownOptions,
-                                    value = processLists[mainIndex].id,
+                                    value = processListGraph.id,
                                     style = {
-                                        'paddingLeft': '20px'
+                                        'paddingLeft': '20px',
+                                        'minWidth': '150px'
                                     }
                                 ),
                             )
@@ -639,28 +713,37 @@ if __name__ == "__main__":
                                     "Add a quantum (1-100) :"
                                 ),
                             ),
-                            dcc.Input(
+                            dbc.Input(
                                 id = 'quantum-input',
+                                placeholder = 'Enter a quantum...',
+                                className = 'd-inline-block',
                                 type = 'number',
-                                value = 6
-                            ),
-                            html.Button(
-                                id = 'add-quantum-button',
-                                children = 'Add',
                                 style = {
-                                    'marginLeft': '5px'
+                                    'width': '65%'
+                                }
+                            ),
+                            dbc.Button(
+                                id = 'add-quantum-button',
+                                color = 'primary',
+                                children = 'Add',
+                                className = 'd-inline-block',
+                                style = {
+                                    'marginLeft': '5px',
+                                    'marginBottom': '5px'
                                 }
                             )
                         ])
                     ],
-                    justify = "left"
+                    className = 'mt-2 mb-4 mx-0',
                 ),
                 dcc.Graph(
                     id = 'gantt-graph',
-                    figure = graphData["gantt"]
+                    figure = graphData["gantt"],
+                    className = 'mb-5'
                 ),
                 html.H2(
                     'PieChart & Data',
+                    className = 'my-2',
                     style = {
                         'textAlign': 'center',
                         'color': '#B0C4DE'
@@ -686,10 +769,12 @@ if __name__ == "__main__":
                             ),
                         width = 12, sm = 6, md = 5, lg = 4, xl = 3),
                     ],
-                    justify = "around"
+                    justify = "around",
+                    className = 'my-5 mx-0'
                 ),
                 html.H2(
                     'Global Data with LineCharts',
+                    className = 'my-2',
                     style = {
                         'textAlign': 'center',
                         'color': '#B0C4DE'
@@ -698,6 +783,7 @@ if __name__ == "__main__":
                 html.Div(
                     id = 'quantums-text',
                     children = "Quantums : %s" % (", ".join(unit + str(processList.quantum) for processList in processLists)),
+                    className = 'mb-5',
                     style = {
                         'textAlign': 'center',
                         'color': '#B0C4DE'
@@ -705,65 +791,86 @@ if __name__ == "__main__":
                 )
             ]
 
-            if len(lineChartsData["x"]["averageWaitingTimeBeforeStart"]) > 1 and len(lineChartsData["y"]["averageWaitingTimeBeforeStart"]) > 1:
-                df = pd.DataFrame(dict(
-                    x = lineChartsData["x"]["averageWaitingTimeBeforeStart"],
-                    y = lineChartsData["y"]["averageWaitingTimeBeforeStart"]
-                ))
-                averageWaitingTimeBeforeStartLineChart = px.line(df, x = "x", y = "y", title = "Average waiting time before start", markers = True)
-                averageWaitingTimeBeforeStartLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
+            displayGraph1 = 'd-none'
+            displayGraph2 = 'd-none'
+            displayGraph3 = 'd-none'
+            displayGraph4 = 'd-none'
 
-                htmlView.append(
-                    dcc.Graph(
-                        id = 'linechart-1-graph',
-                        figure = averageWaitingTimeBeforeStartLineChart
-                    ),
-                )
+            if len(lineChartsData["x"]["averageWaitingTimeBeforeStart"]) > 1 and len(lineChartsData["y"]["averageWaitingTimeBeforeStart"]) > 1:
+                displayGraph1 = 'd-block'
 
             if len(lineChartsData["x"]["averageWaitingTime"]) > 1 and len(lineChartsData["y"]["averageWaitingTime"]) > 1:
-                df = pd.DataFrame(dict(
-                    x = lineChartsData["x"]["averageWaitingTime"],
-                    y = lineChartsData["y"]["averageWaitingTime"]
-                ))
-                averageWaitingTimeLineChart = px.line(df, x = "x", y = "y", title = "Average waiting time", markers = True)
-                averageWaitingTimeLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
-
-                htmlView.append(
-                    dcc.Graph(
-                        id = 'linechart-2-graph',
-                        figure = averageWaitingTimeLineChart
-                    ),
-                )
+                displayGraph2 = 'd-block'
 
             if len(lineChartsData["x"]["averageLoadingTime"]) > 1 and len(lineChartsData["y"]["averageLoadingTime"]) > 1:
-                df = pd.DataFrame(dict(
-                    x = lineChartsData["x"]["averageLoadingTime"],
-                    y = lineChartsData["y"]["averageLoadingTime"]
-                ))
-                averageLoadingTimeLineChart = px.line(df, x = "x", y = "y", title = "Average loading time", markers = True)
-                averageLoadingTimeLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
-
-                htmlView.append(
-                    dcc.Graph(
-                        id = 'linechart-3-graph',
-                        figure = averageLoadingTimeLineChart
-                    ),
-                )
+                displayGraph3 = 'd-block'
 
             if len(lineChartsData["x"]["averageJourneyTime"]) > 1 and len(lineChartsData["y"]["averageJourneyTime"]) > 1:
-                df = pd.DataFrame(dict(
-                    x = lineChartsData["x"]["averageJourneyTime"],
-                    y = lineChartsData["y"]["averageJourneyTime"]
-                ))
-                averageJourneyTimeLineChart = px.line(df, x = "x", y = "y", title = "Average journey time", markers = True)
-                averageJourneyTimeLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
+                displayGraph4 = 'd-block'
 
-                htmlView.append(
-                    dcc.Graph(
-                        id = 'linechart-4-graph',
-                        figure = averageJourneyTimeLineChart
-                    ),
-                )
+            df = pd.DataFrame(dict(
+                x = lineChartsData["x"]["averageWaitingTimeBeforeStart"],
+                y = lineChartsData["y"]["averageWaitingTimeBeforeStart"]
+            ))
+            df = df.sort_values(by = "x")
+            averageWaitingTimeBeforeStartLineChart = px.line(df, x = "x", y = "y", title = "Average waiting time before start", markers = True)
+            averageWaitingTimeBeforeStartLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
+
+            htmlView.append(
+                dcc.Graph(
+                    id = 'linechart-1-graph',
+                    figure = averageWaitingTimeBeforeStartLineChart,
+                    className = displayGraph1
+                ),
+            )
+
+            df = pd.DataFrame(dict(
+                x = lineChartsData["x"]["averageWaitingTime"],
+                y = lineChartsData["y"]["averageWaitingTime"]
+            ))
+            df = df.sort_values(by = "x")
+            averageWaitingTimeLineChart = px.line(df, x = "x", y = "y", title = "Average waiting time", markers = True)
+            averageWaitingTimeLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
+
+            htmlView.append(
+                dcc.Graph(
+                    id = 'linechart-2-graph',
+                    figure = averageWaitingTimeLineChart,
+                    className = displayGraph2
+                ),
+            )
+
+            df = pd.DataFrame(dict(
+                x = lineChartsData["x"]["averageLoadingTime"],
+                y = lineChartsData["y"]["averageLoadingTime"]
+            ))
+            df = df.sort_values(by = "x")
+            averageLoadingTimeLineChart = px.line(df, x = "x", y = "y", title = "Average loading time", markers = True)
+            averageLoadingTimeLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
+
+            htmlView.append(
+                dcc.Graph(
+                    id = 'linechart-3-graph',
+                    figure = averageLoadingTimeLineChart,
+                    className = displayGraph3
+                ),
+            )
+
+            df = pd.DataFrame(dict(
+                x = lineChartsData["x"]["averageJourneyTime"],
+                y = lineChartsData["y"]["averageJourneyTime"]
+            ))
+            df = df.sort_values(by = "x")
+            averageJourneyTimeLineChart = px.line(df, x = "x", y = "y", title = "Average journey time", markers = True)
+            averageJourneyTimeLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
+
+            htmlView.append(
+                dcc.Graph(
+                    id = 'linechart-4-graph',
+                    figure = averageJourneyTimeLineChart,
+                    className = displayGraph4
+                ),
+            )
             
             app.layout = html.Div(children = htmlView)
             Timer(1, open_browser).start();
