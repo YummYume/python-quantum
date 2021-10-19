@@ -825,6 +825,7 @@ if __name__ == "__main__":
             averageWaitingTimeBeforeStartLineChart = px.line(df, x = "x", y = "y", title = "Average waiting time before start", markers = True)
             averageWaitingTimeBeforeStartLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
 
+            # Add the graphs to the html
             htmlView.append(
                 dcc.Graph(
                     id = 'linechart-1-graph',
