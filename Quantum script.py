@@ -426,6 +426,7 @@ def generateQuantums(quantum = QUANTUM):
     Input('quantum', 'value')
 )
 def updateQuantumGraphs(processListId):
+    # Check if a value is selected and update graphs
     if isinstance(processListId, int):
         processListSelect = next((processList for processList in processLists if processList.id == processListId), None)
         if processListSelect is not None:
@@ -464,12 +465,14 @@ def addQuantum(n, newQuantum, quantumId):
             except:
                 print("Value %s cannot be converted to int." % newQuantum)
 
+        # Check the value given (if it's valid)
         if isinstance(newQuantum, int) and newQuantum > 0 and newQuantum < 101 and not any(processList.quantum == newQuantum for processList in processLists):
             newProcessList = ProcessList(quantumId, deepcopy(processes), newQuantum, contextChangeDuration, unit)
             newProcessList.runProcesses()
             processLists.append(newProcessList)
             processLists.sort(key = lambda x: x.quantum, reverse = False)
 
+            # Update the dropdown
             dropdownOptions = []
             for processList in processLists:
                 dropdownOptions.append({
@@ -477,8 +480,10 @@ def addQuantum(n, newQuantum, quantumId):
                     'value': processList.id
                 })
 
+            # Update the text with all quantums
             quantumsText = "Quantums : %s" % (", ".join(unit + str(processList.quantum) for processList in processLists))
 
+            # Prepare the new lineCharts
             lineChartsData["x"]["averageWaitingTimeBeforeStart"].append(newQuantum)
             lineChartsData["x"]["averageWaitingTime"].append(newQuantum)
             lineChartsData["x"]["averageLoadingTime"].append(newQuantum)
@@ -521,6 +526,7 @@ def addQuantum(n, newQuantum, quantumId):
             averageJourneyTimeLineChart = px.line(df, x = "x", y = "y", title = "Average journey time", markers = True)
             averageJourneyTimeLineChart.update_layout(xaxis_title = "Quantum", yaxis_title = timeLabel)
 
+            #Increase the ID
             quantumId += 1
 
             return True, False, quantumId, dropdownOptions, quantumsText, averageWaitingTimeBeforeStartLineChart, 'd-block', averageWaitingTimeLineChart, 'd-block', averageLoadingTimeLineChart, 'd-block', averageJourneyTimeLineChart, 'd-block'
@@ -592,11 +598,13 @@ if __name__ == "__main__":
         }
         multipleQuantums = input("\nGenerate multiple quantums? (y/n) : ")
 
+        # Generate multiple quantums for accurate results
         if multipleQuantums == "" or multipleQuantums == "y" or multipleQuantums == "yes":
             quantumData = generateQuantums(quantum)
             quantums = quantumData["quantums"]
             mainIndex = quantumData["mainIndex"]
 
+        # Add ProcessLists
         for generateQuantum in quantums:
             processLists.append(ProcessList(quantumId, deepcopy(processes), generateQuantum, contextChangeDuration, unit))
             if quantumId == mainIndex:
@@ -604,6 +612,7 @@ if __name__ == "__main__":
 
             quantumId += 1
 
+        # Prepare data for the lineCharts
         for processList in processLists:
             processList.runProcesses()
             currentQuantum = processList.quantum
@@ -790,6 +799,7 @@ if __name__ == "__main__":
                 )
             ]
 
+            # Display global graphs if we have at least 2 values per graph
             displayGraph1 = 'd-none'
             displayGraph2 = 'd-none'
             displayGraph3 = 'd-none'
@@ -871,6 +881,7 @@ if __name__ == "__main__":
                 ),
             )
             
+            #Run the server
             app.layout = html.Div(children = htmlView)
             Timer(1, open_browser).start();
             app.run_server(debug = True, port = port, use_reloader = False)
