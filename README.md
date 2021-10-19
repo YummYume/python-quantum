@@ -4,7 +4,7 @@ Generates graphs with many data using a .json file given.
 
 ## To Install
 
-- Clone the project (code > download .zip and unzip folder or run ```git clone git@github.com:YummYume/python-quantum.git``` if git is installed)
+- Clone the project (code > download .zip and unzip folder or run ```git clone https://github.com/YummYume/python-quantum.git``` if git is installed)
 - run ```pip install -r requirements.txt```
 - run ```python3 "Quantum script.py"```
 
